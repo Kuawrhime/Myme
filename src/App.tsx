@@ -197,7 +197,7 @@ export default function App() {
   };
 
   // Create customized folder deck
-  const handleCreateDeck = (name: string, description: string) => {
+  const handleCreateDeck = (name: string, description: string, language?: string) => {
     const fresh: Deck = {
       id: 'custom-' + Date.now().toString(),
       name,
@@ -206,7 +206,8 @@ export default function App() {
       createdBy: 'You (Creator)',
       createdTime: Date.now(),
       cards: [],
-      category: 'custom'
+      category: 'custom',
+      language: language || 'Chinese'
     };
 
     const nextCustom = [fresh, ...customDecks];

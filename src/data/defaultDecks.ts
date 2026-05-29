@@ -14,6 +14,7 @@ export const DEFAULT_DECKS: Deck[] = [
     isCustom: false,
     createdBy: 'Official Editor',
     createdTime: 1716912000000,
+    language: 'Chinese',
     cards: [
       {
         id: 'hsk1-nihao',
@@ -125,6 +126,7 @@ export const DEFAULT_DECKS: Deck[] = [
     isCustom: false,
     createdBy: 'Official Culinary',
     createdTime: 1716913000000,
+    language: 'Chinese',
     cards: [
       {
         id: 'food-mifan',
@@ -206,6 +208,7 @@ export const DEFAULT_DECKS: Deck[] = [
     isCustom: false,
     createdBy: 'Official Travel',
     createdTime: 1716914000000,
+    language: 'Chinese',
     cards: [
       {
         id: 'trav-duoshaoqian',
@@ -256,6 +259,120 @@ export const DEFAULT_DECKS: Deck[] = [
         examplePinyin: 'Wǒmen jīnwǎn zhù zài zhè jiā jiǔdiàn.',
         exampleEnglish: 'We are staying at this hotel tonight.',
         audioHint: '\"Jyoo-dyen\". Low dipping tone (3rd), followed by a sharp drop (4th).'
+      }
+    ]
+  },
+  {
+    id: 'spanish-basics',
+    name: 'Spanish Travel Essentials',
+    description: 'Learn simple greetings, polite survival words, and ordering foods in Spanish.',
+    category: 'travel',
+    isCustom: false,
+    createdBy: 'Official Spanish Editor',
+    createdTime: 1716915000000,
+    language: 'Spanish',
+    cards: [
+      {
+        id: 'es-hola',
+        character: 'Hola',
+        pinyin: '[oh-lah]',
+        english: 'Hello / Hi',
+        example: '¡Hola! ¿Cómo estás?',
+        examplePinyin: '[oh-lah co-moh es-tahs]',
+        exampleEnglish: 'Hello! How are you?',
+        audioHint: 'The H is silent in Spanish.'
+      },
+      {
+        id: 'es-gracias',
+        character: 'Gracias',
+        pinyin: '[grah-syahs]',
+        english: 'Thank you',
+        example: 'Muchas gracias por la comida.',
+        examplePinyin: '[moo-chahs grah-syahs por lah co-mee-dah]',
+        exampleEnglish: 'Thank you very much for the food.',
+        audioHint: 'Pronounce the C like s (Latin America) or th (Spain).'
+      },
+      {
+        id: 'es-por-favor',
+        character: 'Por favor',
+        pinyin: '[por fah-vor]',
+        english: 'Please',
+        example: 'La cuenta, por favor.',
+        examplePinyin: '[lah kwen-tah por fah-vor]',
+        exampleEnglish: 'The bill, please.',
+        audioHint: 'Soft Spanish R at the end.'
+      },
+      {
+        id: 'es-bano',
+        character: 'El baño',
+        pinyin: '[el bah-nyoh]',
+        english: 'The bathroom / toilet',
+        example: '¿Dónde está el baño?',
+        examplePinyin: '[dohn-deh es-tah el bah-nyoh]',
+        exampleEnglish: 'Where is the bathroom?',
+        audioHint: 'The ñ makes a ny sound, like onion.'
+      },
+      {
+        id: 'es-agua',
+        character: 'Agua',
+        pinyin: '[ah-gwah]',
+        english: 'Water',
+        example: 'Un vaso de agua, por favor.',
+        examplePinyin: '[oon bah-so deh ah-gwah por fah-vor]',
+        exampleEnglish: 'A glass of water, please.',
+        audioHint: 'Keep vowels short and crisp.'
+      }
+    ]
+  },
+  {
+    id: 'french-basics',
+    name: 'French Cafe & Chit-Chat',
+    description: 'Essential polite conversations, ordering croissants, and surviving in a Parisian cafe.',
+    category: 'conversational',
+    isCustom: false,
+    createdBy: 'Official French Editor',
+    createdTime: 1716916000000,
+    language: 'French',
+    cards: [
+      {
+        id: 'fr-bonjour',
+        character: 'Bonjour',
+        pinyin: '[bohn-zhoor]',
+        english: 'Hello / Good morning',
+        example: 'Bonjour, comment ça va ?',
+        examplePinyin: '[bohn-zhoor co-mahn sah vah]',
+        exampleEnglish: 'Hello, how is it going?',
+        audioHint: 'Nasal O in "bon" and a soft throat R at the end.'
+      },
+      {
+        id: 'fr-merci',
+        character: 'Merci',
+        pinyin: '[mair-see]',
+        english: 'Thank you',
+        example: 'Merci beaucoup !',
+        examplePinyin: '[mair-see boh-coo]',
+        exampleEnglish: 'Thank you very much!',
+        audioHint: 'Throaty French R sound.'
+      },
+      {
+        id: 'fr-sil-vous-plait',
+        character: 'S\'il vous plaît',
+        pinyin: '[seel voo pleh]',
+        english: 'Please (formal)',
+        example: 'Un café, s\'il vous plaît.',
+        examplePinyin: '[oon cah-feh seel voo pleh]',
+        exampleEnglish: 'A coffee, please.',
+        audioHint: 'Do not pronounce the t at the end of plaît.'
+      },
+      {
+        id: 'fr-croissant',
+        character: 'Croissant',
+        pinyin: '[crwah-sahn]',
+        english: 'Croissant',
+        example: 'Je voudrais un croissant.',
+        examplePinyin: '[zhuh voo-dreh oon crwah-sahn]',
+        exampleEnglish: 'I would like a croissant.',
+        audioHint: 'Nasal trailing sound, do not sound the t!'
       }
     ]
   }

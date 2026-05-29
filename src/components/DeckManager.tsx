@@ -4,13 +4,13 @@
  */
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Share2, Clipboard, Layers, Sparkles, BookOpen, Check, FileCheck, Info } from 'lucide-react';
+import { Plus, Trash2, Share2, Clipboard, Layers, Sparkles, BookOpen, Check, FileCheck, Info, ChevronDown, BookMarked, HelpCircle } from 'lucide-react';
 import { Deck, Flashcard } from '../types';
 import { sfx } from '../utils/audio';
 
 interface DeckManagerProps {
   customDecks: Deck[];
-  onCreateDeck: (name: string, description: string) => void;
+  onCreateDeck: (name: string, description: string, language?: string) => void;
   onDeleteDeck: (deckId: string) => void;
   onAddCardToDeck: (deckId: string, card: Omit<Flashcard, 'id'>) => void;
   onDeleteCardFromDeck: (deckId: string, cardId: string) => void;
@@ -27,6 +27,7 @@ export default function DeckManager({
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [newDeckName, setNewDeckName] = useState('');
   const [newDeckDesc, setNewDeckDesc] = useState('');
+  const [newDeckLang, setNewDeckLang] = useState('Chinese');
   
   // Card input states
   const [charVal, setCharVal] = useState('');
@@ -37,19 +38,69 @@ export default function DeckManager({
   const [exampleEnglishVal, setExampleEnglishVal] = useState('');
   const [tipVal, setTipVal] = useState('');
 
+  // Bulk input states
+  const [showBulkInput, setShowBulkInput] = useState(false);
+  const [bulkDelimiter, setBulkDelimiter] = useState<'comma' | 'tab' | 'semicolon'>('comma');
+  const [bulkText, setBulkText] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   // UI state feedback
   const [copiedDeckId, setCopiedDeckId] = useState<string | null>(null);
   const [showAddDeckForm, setShowAddDeckForm] = useState(false);
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
 
   const activeDeck = customDecks.find(d => d.id === activeDeckId);
+
+  const handleBulkAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDeckId || !bulkText.trim()) return;
+    sfx.playClick();
+
+    const lines = bulkText.split('\n');
+    let addedCount = 0;
+
+    let delimiter: string = ',';
+    if (bulkDelimiter === 'tab') delimiter = '\t';
+    else if (bulkDelimiter === 'semicolon') delimiter = ';';
+
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      const parts = trimmed.split(delimiter);
+      if (parts.length > 0) {
+        const char = parts[0]?.trim() || '';
+        if (!char) return; // Need a word
+
+        const trans = parts[1]?.trim() || '';
+        const pron = parts[2]?.trim() || '';
+
+        onAddCardToDeck(activeDeckId, {
+          character: char,
+          pinyin: pron || '',
+          english: trans || '',
+        });
+        addedCount++;
+      }
+    });
+
+    sfx.playSuccess();
+    setBulkText('');
+    setShowBulkInput(false);
+    setBulkSuccessMsg(`Successfully imported ${addedCount} cards to "${activeDeck?.name}" in bulk!`);
+    setTimeout(() => {
+      setBulkSuccessMsg(null);
+    }, 6000);
+  };
 
   const handleCreateDeckSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeckName.trim()) return;
     sfx.playClick();
-    onCreateDeck(newDeckName, newDeckDesc);
+    onCreateDeck(newDeckName, newDeckDesc, newDeckLang);
     setNewDeckName('');
     setNewDeckDesc('');
+    setNewDeckLang('Chinese');
     setShowAddDeckForm(false);
   };
 
@@ -275,6 +326,24 @@ export default function DeckManager({
                 </div>
 
                 <div className="space-y-1.5">
+                  <label className="text-xs font-mono font-bold text-brand-gray uppercase">Target Language *</label>
+                  <select
+                    value={newDeckLang}
+                    onChange={e => setNewDeckLang(e.target.value)}
+                    className="w-full py-2.5 px-4 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-sm outline-none transition-all cursor-pointer font-sans"
+                  >
+                    <option value="Chinese">Chinese (Mandarin)</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="French">French</option>
+                    <option value="German">German</option>
+                    <option value="Japanese">Japanese</option>
+                    <option value="English">English</option>
+                    <option value="Italian">Italian</option>
+                    <option value="Other">Other Language</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
                   <label className="text-xs font-mono font-bold text-brand-gray uppercase">Deck Description</label>
                   <textarea
                     value={newDeckDesc}
@@ -329,122 +398,284 @@ export default function DeckManager({
                 </div>
               </div>
 
+              {/* Bulk add success feedback banner */}
+              {bulkSuccessMsg && (
+                <div className="p-4 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-2xl flex items-center justify-between shadow-xs animate-slideIn">
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>{bulkSuccessMsg}</span>
+                  </div>
+                  <button
+                    onClick={() => setBulkSuccessMsg(null)}
+                    className="p-1 hover:bg-emerald-100 rounded text-emerald-700 cursor-pointer text-xs"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {/* Form to submit card */}
               <div className="bg-white border border-brand-border rounded-3xl p-6 space-y-6 shadow-xs">
-                <div>
-                  <h4 className="text-sm font-black text-brand-dark uppercase tracking-wide font-sans flex items-center gap-1.5">
-                    <Plus className="w-4 h-4 text-brand-purple" />
-                    <span>Add Flashcard to {activeDeck.name}</span>
-                  </h4>
-                  <p className="text-[11px] text-brand-gray mt-0.5">Generate customized prompt questions.</p>
+                <div className="flex items-start justify-between relative">
+                  <div>
+                    <h4 className="text-sm font-black text-brand-dark uppercase tracking-wide font-sans flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-brand-purple" />
+                      <span>{showBulkInput ? "Bulk Add Words" : `Add Card to ${activeDeck.name}`}</span>
+                    </h4>
+                    <p className="text-[11px] text-brand-gray mt-0.5">
+                      {showBulkInput 
+                        ? "Quickly add words to your deck by pasting lines of delimited text from CSVs or spreadsheets." 
+                        : "Generate customized prompt questions for your space study."}
+                    </p>
+                  </div>
+
+                  {/* Advanced dropdown toggle */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sfx.playClick();
+                        setAdvancedOpen(!advancedOpen);
+                      }}
+                      id="btn-advanced-dropdown"
+                      className="px-3.5 py-2 border-2 border-brand-border hover:border-brand-purple text-brand-dark hover:text-brand-purple font-black text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer bg-white"
+                    >
+                      <span>Advanced</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                    
+                    {advancedOpen && (
+                      <div className="absolute right-0 mt-1 w-44 bg-white border border-brand-border rounded-xl shadow-lg z-30 overflow-hidden animate-fadeIn py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sfx.playClick();
+                            setShowBulkInput(true);
+                            setAdvancedOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-brand-bg text-xs font-bold text-brand-dark flex items-center gap-2 cursor-pointer transition-colors"
+                        >
+                          <span className="text-brand-dark font-black text-sm pr-1">+</span>
+                          <span>Bulk add words</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sfx.playClick();
+                            setShowBulkInput(false);
+                            setAdvancedOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-brand-bg text-xs font-bold text-brand-dark flex items-center gap-2 cursor-pointer transition-colors"
+                        >
+                          <span className="text-brand-dark font-black text-xs pr-1">✎</span>
+                          <span>Single card mode</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <form onSubmit={handleAddCardSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    
-                    {/* Chinese Characters info */}
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">Chinese Characters *</label>
-                      <input
-                        type="text"
-                        value={charVal}
-                        onChange={e => setCharVal(e.target.value)}
-                        placeholder="e.g., 朋友"
-                        className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
+                {showBulkInput ? (
+                  /* BULK ADD MODE FORM (Screenshot 2) */
+                  <form onSubmit={handleBulkAddSubmit} className="space-y-4 animate-fadeIn">
+                    <p className="text-xs text-brand-gray leading-relaxed font-medium">
+                      Quickly add lots of words by pasting in from a spreadsheet or CSV file. Words should be one per line - blank lines will be ignored. There is a limit of 1000
+                    </p>
+                    <p className="text-xs text-brand-gray leading-relaxed font-medium">
+                      Only text columns will be added to, therefore each line should contain:{' '}
+                      <span className="font-extrabold text-brand-dark">
+                        {activeDeck.language === 'Spanish'
+                          ? 'Spanish Word, English Translation, Pronunciation Hint'
+                          : activeDeck.language === 'French'
+                          ? 'French Word, English Translation, Pronunciation Notes'
+                          : activeDeck.language === 'Chinese'
+                          ? 'Chinese Character, English Translation, Pinyin'
+                          : 'Word/Phrase, Translation, Pronunciation Notes'}
+                      </span>. Any missing fields will be blank.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 py-1.5 border-y border-brand-border/60">
+                      <span className="text-xs font-bold text-brand-dark min-w-[110px]">
+                        Word Delimiter
+                      </span>
+                      <div className="flex gap-4">
+                        {[
+                          { id: 'comma', label: 'Comma' },
+                          { id: 'tab', label: 'Tab' },
+                          { id: 'semicolon', label: 'Semicolon' },
+                        ].map(del => (
+                          <label key={del.id} className="flex items-center gap-1.5 text-xs text-brand-gray font-semibold cursor-pointer select-none">
+                            <input
+                              type="radio"
+                              name="bulkDelimiter"
+                              checked={bulkDelimiter === del.id}
+                              onChange={() => {
+                                sfx.playClick();
+                                setBulkDelimiter(del.id as any);
+                              }}
+                              className="accent-brand-purple h-4 w-4"
+                            />
+                            <span>{del.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-brand-dark block">
+                        Paste your data here:
+                      </label>
+                      <textarea
+                        value={bulkText}
+                        onChange={e => setBulkText(e.target.value)}
+                        placeholder={
+                          activeDeck.language === 'Spanish'
+                            ? "Hola, Hello, [oh-lah]\nGracias, Thank you, [grah-syahs]"
+                            : activeDeck.language === 'French'
+                            ? "Bonjour, Hello, [bohn-zhoor]\nMerci, Thank you, [mair-see]"
+                            : "你好, Hello, nǐ hǎo\n谢谢, Thank you, xièxie"
+                        }
+                        rows={6}
+                        className="w-full p-4 border-2 border-brand-border focus:border-brand-purple rounded-2xl text-xs outline-none transition-all placeholder:text-brand-light-gray font-mono bg-[#FAFAFA]"
                         required
                       />
                     </div>
 
-                    {/* Standard Pin-Yin */}
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">Pinyin *</label>
-                      <input
-                        type="text"
-                        value={pinyinVal}
-                        onChange={e => setPinyinVal(e.target.value)}
-                        placeholder="e.g., péngyǒu"
-                        className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
-                        required
-                      />
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sfx.playClick();
+                          setShowBulkInput(false);
+                          setBulkText('');
+                        }}
+                        className="px-5 py-2.5 border border-brand-border hover:bg-brand-bg text-brand-gray rounded-xl text-xs sm:text-sm font-semibold cursor-pointer"
+                      >
+                        Single Card Mode
+                      </button>
+                      <button
+                        type="submit"
+                        id="btn-bulk-import-submit"
+                        className="px-6 py-2.5 bg-brand-purple hover:bg-brand-purple/95 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Bulk Add Words</span>
+                      </button>
                     </div>
-
-                    {/* English translations */}
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">English Translation *</label>
-                      <input
-                        type="text"
-                        value={englishVal}
-                        onChange={e => setEnglishVal(e.target.value)}
-                        placeholder="e.g., Friend, pal"
-                        className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Context sentence section (collapsed optional drawer helper) */}
-                  <div className="bg-brand-bg border border-brand-border p-4 rounded-2xl space-y-3.5">
-                    <span className="text-[10px] font-mono font-extrabold text-brand-gray uppercase tracking-widest flex items-center gap-1">
-                      <Info className="w-3.5 h-3.5 text-brand-purple" />
-                      <span>Context Learning (Optional but Highly Recommended)</span>
-                    </span>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  </form>
+                ) : (
+                  /* SINGLE CARD INPUT Form */
+                  <form onSubmit={handleAddCardSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      
+                      {/* Character/Word info */}
                       <div className="space-y-1">
-                        <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Example Sentence</label>
+                        <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">
+                          {activeDeck.language === 'Chinese' ? 'Chinese Characters *' : 'Word / Phrase *'}
+                        </label>
                         <input
                           type="text"
-                          value={exampleVal}
-                          onChange={e => setExampleVal(e.target.value)}
-                          placeholder="他是我的好朋友。"
+                          value={charVal}
+                          onChange={e => setCharVal(e.target.value)}
+                          placeholder={activeDeck.language === 'Spanish' ? 'e.g., Amigo' : activeDeck.language === 'French' ? 'e.g., Ami' : 'e.g., 朋友'}
+                          className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
+                          required
+                        />
+                      </div>
+
+                      {/* Standard Spelling/Pronunciation */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">
+                          {activeDeck.language === 'Chinese' ? 'Pinyin *' : 'Pronunciation / Note *'}
+                        </label>
+                        <input
+                          type="text"
+                          value={pinyinVal}
+                          onChange={e => setPinyinVal(e.target.value)}
+                          placeholder={activeDeck.language === 'Spanish' ? 'e.g., [ah-mee-goh]' : activeDeck.language === 'French' ? 'e.g., [ah-mee]' : 'e.g., péngyǒu'}
+                          className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
+                          required
+                        />
+                      </div>
+
+                      {/* English translation */}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-mono font-bold text-brand-gray uppercase">English Translation *</label>
+                        <input
+                          type="text"
+                          value={englishVal}
+                          onChange={e => setEnglishVal(e.target.value)}
+                          placeholder="e.g., Friend, pal"
+                          className="w-full py-2 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-xl text-xs outline-none transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Context sentence section (collapsed optional drawer helper) */}
+                    <div className="bg-brand-bg border border-brand-border p-4 rounded-2xl space-y-3.5">
+                      <span className="text-[10px] font-mono font-extrabold text-brand-gray uppercase tracking-widest flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-brand-purple" />
+                        <span>Context Learning (Optional but Highly Recommended)</span>
+                      </span>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Example Sentence</label>
+                          <input
+                            type="text"
+                            value={exampleVal}
+                            onChange={e => setExampleVal(e.target.value)}
+                            placeholder={activeDeck.language === 'Spanish' ? 'Él es mi amigo.' : activeDeck.language === 'French' ? 'Il est mon ami.' : '他是我的好朋友。'}
+                            className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono font-bold text-brand-gray uppercase font-medium">Example Pronunciation</label>
+                          <input
+                            type="text"
+                            value={examplePinyinVal}
+                            onChange={e => setExamplePinyinVal(e.target.value)}
+                            placeholder={activeDeck.language === 'Spanish' ? '[el es mee ah-mee-goh]' : '[eel eh mohn ah-mee]'}
+                            className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Example Translation</label>
+                          <input
+                            type="text"
+                            value={exampleEnglishVal}
+                            onChange={e => setExampleEnglishVal(e.target.value)}
+                            placeholder="He is my friend."
+                            className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Pronunciation Guide / Tone Tips</label>
+                        <input
+                          type="text"
+                          value={tipVal}
+                          onChange={e => setTipVal(e.target.value)}
+                          placeholder="e.g., Stress the /mi/ sound; rolling soft r"
                           className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-mono font-bold text-brand-gray uppercase font-medium">Example Pinyin</label>
-                        <input
-                          type="text"
-                          value={examplePinyinVal}
-                          onChange={e => setExamplePinyinVal(e.target.value)}
-                          placeholder="Tā shì wǒ de hǎo péngyǒu."
-                          className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Example English</label>
-                        <input
-                          type="text"
-                          value={exampleEnglishVal}
-                          onChange={e => setExampleEnglishVal(e.target.value)}
-                          placeholder="He is my good friend."
-                          className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
-                        />
-                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-mono font-bold text-brand-gray uppercase">Tone Tips / Pronunciation Guide</label>
-                      <input
-                        type="text"
-                        value={tipVal}
-                        onChange={e => setTipVal(e.target.value)}
-                        placeholder="e.g., Pung - rising scale; Yo - neutral quick tail"
-                        className="w-full py-1.5 px-3 border border-brand-border bg-white focus:border-brand-purple focus:ring-2 focus:ring-indigo-50 rounded-lg text-xs outline-none transition-all"
-                      />
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="submit"
+                        id="btn-add-card-to-active"
+                        className="px-6 py-2.5 bg-brand-purple hover:bg-brand-purple/95 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Add Card</span>
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      id="btn-add-card-to-active"
-                      className="px-6 py-2.5 bg-brand-purple hover:bg-brand-purple/95 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Card</span>
-                    </button>
-                  </div>
-                </form>
+                  </form>
+                )}
               </div>
 
               {/* Cards table list */}

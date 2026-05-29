@@ -24,8 +24,10 @@ export default function StudySession({
   onCardReviewed,
   onClose,
 }: StudySessionProps) {
+  // Navigation: choice configurator or actual study
+  const [sessionMode, setSessionMode] = useState<'choices' | 'learn' | 'classic' | 'speed'>('choices');
+  
   // Filter appropriate cards for studying:
-  // Pre-load all cards of the deck. But prioritize those due or brand new.
   const [cardsToStudy, setCardsToStudy] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -35,13 +37,20 @@ export default function StudySession({
   const [quizIsCorrect, setQuizIsCorrect] = useState(false);
   const [xpEarnedThisSession, setXpEarnedThisSession] = useState(0);
   
-  // Interactive test modes: 'intro' (first time see) | 'self-rate' (traditional flip-rate) | 'mc-english' | 'mc-pinyin' | 'spelling'
+  // Interactive test modes
   const [testMode, setTestMode] = useState<'intro' | 'self-rate' | 'mc-english' | 'mc-pinyin' | 'spelling'>('intro');
   const [multipleChoiceOptions, setMultipleChoiceOptions] = useState<string[]>([]);
   
   // Confetti particles for correct answers
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // Speed Review custom gamified states
+  const [lives, setLives] = useState(3);
+  const [speedReviewFail, setSpeedReviewFail] = useState(false);
+  const [speedSuccessCount, setSpeedSuccessCount] = useState(0);
+  const [timerCount, setTimerCount] = useState(6);
+
+  const timerIntervalRef = useRef<any>(null);
   const activeCard = cardsToStudy[currentIndex];
 
   // Initialize study queue
@@ -60,24 +69,128 @@ export default function StudySession({
   }, [deck, srsRecords]);
 
   // Read Card character using local Text-to-Speech (native browser voice)
-  const speakChinese = (text: string) => {
+  const speakText = (text: string) => {
     if (!('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.rate = 0.85; // slightly slower for language learners
       
-      // Attempt to load a Chinese voice if available
+      const lang = deck.language || 'Chinese';
+      if (lang === 'Spanish') {
+        utterance.lang = 'es-ES';
+      } else if (lang === 'French') {
+        utterance.lang = 'fr-FR';
+      } else if (lang === 'German') {
+        utterance.lang = 'de-DE';
+      } else if (lang === 'Japanese') {
+        utterance.lang = 'ja-JP';
+      } else if (lang === 'Italian') {
+        utterance.lang = 'it-IT';
+      } else {
+        utterance.lang = 'zh-CN';
+      }
+      
+      utterance.rate = 0.85; // slightly slower for learners
+      
       const voices = window.speechSynthesis.getVoices();
-      const zhVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('ZH'));
-      if (zhVoice) {
-        utterance.voice = zhVoice;
+      const matchingVoice = voices.find(v => v.lang.toLowerCase().includes(utterance.lang.toLowerCase()));
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
       }
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn('Speech synthesis failed to execute.', e);
     }
+  };
+
+  // Speed Review Timer Tick interval
+  useEffect(() => {
+    if (sessionMode !== 'speed' || speedReviewFail || currentIndex >= cardsToStudy.length || quizSubmitted) {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      return;
+    }
+
+    setTimerCount(6);
+
+    timerIntervalRef.current = setInterval(() => {
+      setTimerCount(prev => {
+        if (prev <= 1) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+          sfx.playFailure();
+          
+          setLives(l => {
+            const nextL = l - 1;
+            if (nextL <= 0) {
+              setSpeedReviewFail(true);
+            }
+            return nextL;
+          });
+
+          setQuizIsCorrect(false);
+          setQuizSubmitted(true);
+
+          setTimeout(() => {
+            handleNextCard();
+          }, 1200);
+
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [sessionMode, speedReviewFail, currentIndex, cardsToStudy.length, quizSubmitted]);
+
+  // Trigger Study selections
+  const startLearnMode = () => {
+    sfx.playClick();
+    const list = [...deck.cards];
+    // Learn new words by default -> prioritize unreviewed cards (reps == 0)
+    list.sort((a, b) => {
+      const aRec = srsRecords[a.id];
+      const bRec = srsRecords[b.id];
+      const aReps = aRec?.repetitions ?? 0;
+      const bReps = bRec?.repetitions ?? 0;
+      return aReps - bReps;
+    });
+    setCardsToStudy(list);
+    setCurrentIndex(0);
+    setSessionMode('learn');
+  };
+
+  const startClassicMode = () => {
+    sfx.playClick();
+    const list = [...deck.cards];
+    list.sort((a, b) => {
+      const aRec = srsRecords[a.id];
+      const bRec = srsRecords[b.id];
+      if (!aRec) return 1;
+      if (!bRec) return -1;
+      return aRec.nextReviewTime - bRec.nextReviewTime;
+    });
+    setCardsToStudy(list);
+    setCurrentIndex(0);
+    setSessionMode('classic');
+  };
+
+  const startSpeedMode = () => {
+    sfx.playClick();
+    const list = [...deck.cards].sort(() => 0.5 - Math.random());
+    setCardsToStudy(list);
+    setCurrentIndex(0);
+    setLives(3);
+    setSpeedSuccessCount(0);
+    setSpeedReviewFail(false);
+    setSessionMode('speed');
   };
 
   // Determine appropriate quiz options and mode for the current card
@@ -90,15 +203,15 @@ export default function StudySession({
     setQuizSubmitted(false);
     setQuizIsCorrect(false);
 
-    // Look at SRS status to determine the dynamic gamified testing mode!
+    // Look at SRS status or Speed mode constraints to determine test styles
     const rec = srsRecords[activeCard.id];
     let mode: 'intro' | 'self-rate' | 'mc-english' | 'mc-pinyin' | 'spelling' = 'intro';
 
-    if (!rec) {
-      // Completely brand new card
+    if (sessionMode === 'speed') {
+      mode = Math.random() > 0.5 ? 'mc-english' : 'mc-pinyin';
+    } else if (!rec) {
       mode = 'intro';
     } else {
-      // Existing cards alternate between self-rating and active multi-choice/spelling quizzing
       const rand = Math.random();
       if (rec.repetitions === 1) {
         mode = rand > 0.5 ? 'mc-english' : 'mc-pinyin';
@@ -113,20 +226,18 @@ export default function StudySession({
 
     setTestMode(mode);
 
-    // Speak character automatically on load to reinforce audio connection!
-    speakChinese(activeCard.character);
+    // Speak character naturally
+    speakText(activeCard.character);
 
     // Prepare Multiple Choice Options if applicable
     if (mode === 'mc-english' || mode === 'mc-pinyin') {
       const correctValue = mode === 'mc-english' ? activeCard.english : activeCard.pinyin;
       
-      // Pull random decoys from other cards in the same deck or a default list
       const otherCards = deck.cards.filter(c => c.id !== activeCard.id);
       const decoys = otherCards
         .map(c => (mode === 'mc-english' ? c.english : c.pinyin))
-        .filter((v, idx, arr) => arr.indexOf(v) === idx); // unique
+        .filter((v, idx, arr) => arr.indexOf(v) === idx);
       
-      // Shuffle decoys and pick 3
       const shuffledDecoys = decoys.sort(() => 0.5 - Math.random()).slice(0, 3);
       
       // Combine correct & decoys, shuffle them
@@ -214,15 +325,42 @@ export default function StudySession({
 
     if (isCorrect) {
       sfx.playSuccess();
-      setXpEarnedThisSession(prev => prev + 10); // 10 XP for correct quiz answer!
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 2000);
-      // Auto register SRS as "Good" in background
-      onCardReviewed(activeCard.id, 'good', 10);
+      
+      if (sessionMode === 'speed') {
+        const xp = 12;
+        setSpeedSuccessCount(prev => prev + 1);
+        setXpEarnedThisSession(prev => prev + xp);
+        onCardReviewed(activeCard.id, 'easy', xp);
+        // Automatically go to next card in speed review
+        setTimeout(() => {
+          handleNextCard();
+        }, 1200);
+      } else {
+        setXpEarnedThisSession(prev => prev + 10); // 10 XP for correct quiz answer!
+        onCardReviewed(activeCard.id, 'good', 10);
+      }
     } else {
       sfx.playFailure();
-      // Auto register SRS as "Again" (since they missed the quiz)
-      onCardReviewed(activeCard.id, 'again', 0);
+      
+      if (sessionMode === 'speed') {
+        setLives(l => {
+          const next = l - 1;
+          if (next <= 0) {
+            setSpeedReviewFail(true);
+          }
+          return next;
+        });
+        onCardReviewed(activeCard.id, 'again', 0);
+        // Automatically go to next card in speed review
+        setTimeout(() => {
+          handleNextCard();
+        }, 1200);
+      } else {
+        // Auto register SRS as "Again" (since they missed the quiz)
+        onCardReviewed(activeCard.id, 'again', 0);
+      }
     }
   };
 
@@ -329,6 +467,172 @@ export default function StudySession({
   // Check if we are finished
   const isFinished = currentIndex >= cardsToStudy.length;
 
+  if (sessionMode === 'choices') {
+    return (
+      <div className="fixed inset-0 z-50 bg-brand-bg/98 backdrop-blur-md flex flex-col items-center justify-center overflow-y-auto px-4 py-6 md:p-8">
+        <div className="w-full max-w-xl bg-white border border-brand-border rounded-3xl p-6 sm:p-10 shadow-xl space-y-6 animate-fadeIn relative">
+          
+          <button 
+            onClick={onClose}
+            className="absolute top-5 right-5 p-2 hover:bg-brand-bg rounded-full text-brand-gray hover:text-brand-dark transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="text-center space-y-2">
+            <span className="text-[10px] font-mono font-black tracking-widest bg-brand-purple/10 text-brand-purple px-3 py-1 rounded-full uppercase">
+              STUDY CONFIGURATOR
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-brand-dark tracking-tight font-sans">
+              Choose your review mode
+            </h2>
+            <p className="text-xs text-brand-gray max-w-md mx-auto">
+              Select one of the sessions below to match your memory training style for <span className="font-bold text-brand-dark">"{deck.name}"</span>.
+            </p>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            {/* GIANT GOLD BUTTON: Learn new words (as displayed in screenshot) */}
+            <button
+              onClick={startLearnMode}
+              id="btn-learn-new-mode"
+              className="w-full text-left p-5 bg-[#FFFCE8] hover:bg-[#FFF9CC] border-2 border-[#FFE082] rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group hover:scale-[1.01] hover:shadow-md"
+            >
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-[#FFE0B2] text-[#E65100] rounded-xl font-bold flex items-center justify-center shrink-0">
+                  🌱
+                </div>
+                <div>
+                  <h4 className="font-sans font-black text-brand-dark text-sm sm:text-base group-hover:text-amber-800 transition-colors flex items-center gap-1.5">
+                    <span>Learn new words</span>
+                    <span className="text-[9px] uppercase font-mono font-bold bg-[#FFE0B2] text-[#E65100] px-1.5 py-0.5 rounded-full">
+                      Default
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-[#5D4037] leading-relaxed mt-0.5 font-medium">
+                    Learn new words or establish baseline SRS levels. Focuses heavy repetitions on unstudied words.
+                  </p>
+                </div>
+              </div>
+              <span className="text-lg font-bold text-amber-800 group-hover:translate-x-1 transition-transform">➔</span>
+            </button>
+
+            <div className="flex items-center justify-center my-2 text-center text-xs font-mono font-bold text-brand-light-gray uppercase tracking-widest relative">
+              <span className="bg-white px-3 z-10">Or choose your session</span>
+              <div className="absolute inset-x-0 top-1/2 h-0.5 bg-brand-border" />
+            </div>
+
+            {/* CLASSIC REVIEW OPTION */}
+            <button
+              onClick={startClassicMode}
+              id="btn-classic-review-mode"
+              className="w-full text-left p-4 hover:bg-brand-bg border border-brand-border hover:border-brand-purple rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-[#E8F5E9] text-[#2E7D32] rounded-xl font-bold flex items-center justify-center shrink-0">
+                  Shower
+                </div>
+                <div>
+                  <h4 className="font-sans font-extrabold text-brand-dark text-sm group-hover:text-brand-purple transition-colors flex items-center gap-2">
+                    <span>Classic review</span>
+                    {deck.cards.length > 0 && (
+                      <span className="text-[9px] font-mono font-bold bg-[#A5D6A7] text-[#1B5E20] px-1.5 py-0.5 rounded-full">
+                        {deck.cards.length} cards
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
+                    Spaced repetition smart logic. Strengthen long-term retention using adaptive self-rating levels.
+                  </p>
+                </div>
+              </div>
+              <span className="text-lg text-brand-purple group-hover:translate-x-1 transition-transform">➔</span>
+            </button>
+
+            {/* SPEED REVIEW OPTION */}
+            <button
+              onClick={startSpeedMode}
+              id="btn-speed-review-mode"
+              className="w-full text-left p-4 hover:bg-[#F3E5F5] hover:border-[#BA68C8] border border-brand-border rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-[#F3E5F5] text-[#7B1FA2] rounded-xl font-bold flex items-center justify-center shrink-0">
+                  ⏱️
+                </div>
+                <div>
+                  <h4 className="font-sans font-extrabold text-[#7B1FA2] text-sm flex items-center gap-2">
+                    <span>Speed review</span>
+                    <span className="text-[9px] font-mono font-bold bg-[#E1BEE7] text-[#7B1FA2] px-1.5 py-0.5 rounded-full">
+                      Hectic Match
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
+                    6-second limit per card with a 3-point loss system if you fail. Answer rapidly, beat the clock!
+                  </p>
+                </div>
+              </div>
+              <span className="text-lg text-[#7B1FA2] group-hover:translate-x-1 transition-transform">➔</span>
+            </button>
+
+          </div>
+
+          <div className="pt-2 text-center">
+            <span className="text-[10px] font-mono font-bold text-brand-light-gray">
+              Target Language: {deck.language || 'Chinese'} • High contrast interface
+            </span>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionMode === 'speed' && speedReviewFail) {
+    return (
+      <div className="fixed inset-0 z-50 bg-brand-bg/98 backdrop-blur-md flex flex-col items-center justify-center overflow-y-auto px-4 py-8 overflow-x-hidden">
+        <div className="w-full max-w-md bg-white border-2 border-brand-red/30 rounded-3xl p-8 shadow-xl text-center flex flex-col items-center justify-center space-y-6 animate-fadeIn">
+          <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center border border-red-200 text-red-600 animate-bounce">
+            💔
+          </div>
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black text-brand-dark tracking-tight font-sans">
+              Game Over!
+            </h2>
+            <p className="text-brand-gray text-xs sm:text-sm mt-2 max-w-sm mx-auto">
+              You ran out of lives! Speed review keeps your reflexes sharp. You reviewed <span className="font-bold text-brand-dark">{speedSuccessCount} cards</span> successfully before running out of hearts. Let's try again!
+            </p>
+          </div>
+
+          {/* Speed achievements summary */}
+          <div className="bg-brand-bg p-4 rounded-xl border border-brand-border text-center w-full">
+            <div className="text-lg font-extrabold text-brand-dark">Score: {speedSuccessCount} Cards</div>
+            <div className="text-xl font-black text-brand-purple mt-1 flex items-center justify-center gap-1.5">
+              <span>+{speedSuccessCount * 8} XP Gained</span>
+            </div>
+          </div>
+
+          <div className="flex gap-3 w-full pt-2">
+            <button
+              onClick={() => {
+                sfx.playClick();
+                setSessionMode('choices');
+              }}
+              className="w-full py-3 bg-brand-bg hover:bg-brand-border text-brand-dark font-extrabold rounded-xl transition-colors cursor-pointer text-xs"
+            >
+              Other Modes
+            </button>
+            <button
+              onClick={startSpeedMode}
+              className="w-full py-3 bg-brand-purple hover:bg-brand-purple/95 text-white font-extrabold rounded-xl shadow-lg transition-all cursor-pointer text-xs"
+            >
+              Retry Speed Mode
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-brand-bg/98 backdrop-blur-md flex flex-col items-center justify-start overflow-y-auto px-4 py-6 md:p-8">
       {/* Confetti Animation Elements */}
@@ -370,6 +674,29 @@ export default function StudySession({
             className="h-full bg-brand-purple transition-all duration-300 rounded-full"
             style={{ width: `${((currentIndex + 1) / cardsToStudy.length) * 100}%` }}
           />
+        </div>
+      )}
+
+      {/* Speed Mode Health & Timer Status */}
+      {sessionMode === 'speed' && !isFinished && (
+        <div className="w-full max-w-2xl flex items-center justify-between bg-indigo-50/50 border border-brand-purple/20 px-4 py-2.5 rounded-2xl mb-6 text-xs animate-fadeIn">
+          <div className="flex items-center gap-1">
+            <span className="font-mono font-bold text-brand-purple uppercase">Lives Remaining:</span>
+            <div className="flex gap-1 ml-1 text-base">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <span key={i} className="transition-transform duration-200">
+                  {i < lives ? '❤️' : '🖤'}
+                </span>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold text-brand-purple uppercase">Time:</span>
+            <div className={`px-2.5 py-0.5 rounded-md font-mono font-black text-sm text-white min-w-10 text-center ${timerCount <= 2 ? 'bg-red-500 animate-pulse' : 'bg-brand-purple'}`}>
+              {timerCount}s
+            </div>
+          </div>
         </div>
       )}
 
@@ -454,7 +781,7 @@ export default function StudySession({
                     </span>
                   </div>
                   <button
-                    onClick={() => speakChinese(activeCard.character)}
+                    onClick={() => speakText(activeCard.character)}
                     id="btn-speak-character-audio"
                     className="p-2 hover:bg-brand-bg rounded-xl text-brand-purple hover:text-brand-purple/80 transition-colors cursor-pointer"
                     title="Pronounce Word"

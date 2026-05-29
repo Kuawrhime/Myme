@@ -153,7 +153,7 @@ export default function Dashboard({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-extrabold text-brand-dark font-sans tracking-tight">
-            Chinese Study Courses
+            Language Learning Sandboxes
           </h2>
           <span className="text-xs font-mono font-medium text-brand-light-gray">
             Browse and start flashcard review
@@ -237,7 +237,7 @@ export default function Dashboard({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${activeColor}`}>
-                      {deck.isCustom ? 'Custom Decks' : (deck.category === 'hsk1' ? 'HSK Level 1' : deck.category)}
+                      {(deck.language || 'Chinese')} • {deck.isCustom ? 'Custom' : (deck.category === 'hsk1' ? 'HSK 1' : deck.category)}
                     </span>
                     <span className="text-xs font-mono font-medium text-brand-light-gray">
                       {totalCards} {totalCards === 1 ? 'card' : 'cards'}

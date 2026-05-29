@@ -23,6 +23,7 @@ export interface Deck {
   createdBy: string;
   createdTime: number;
   category?: 'hsk1' | 'conversational' | 'travel' | 'custom';
+  language?: string; // Target language e.g. 'Chinese' | 'Spanish' | 'French' etc.
 }
 
 export type SRSState = 'new' | 'learning' | 'review' | 'mastered';
