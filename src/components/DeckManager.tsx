@@ -12,7 +12,7 @@ interface DeckManagerProps {
   customDecks: Deck[];
   onCreateDeck: (name: string, description: string, language?: string) => void;
   onDeleteDeck: (deckId: string) => void;
-  onAddCardToDeck: (deckId: string, card: Omit<Flashcard, 'id'>) => void;
+  onAddCardsToDeck: (deckId: string, cards: Omit<Flashcard, 'id'>[]) => void;
   onDeleteCardFromDeck: (deckId: string, cardId: string) => void;
 }
 
@@ -20,7 +20,7 @@ export default function DeckManager({
   customDecks,
   onCreateDeck,
   onDeleteDeck,
-  onAddCardToDeck,
+  onAddCardsToDeck,
   onDeleteCardFromDeck,
 }: DeckManagerProps) {
   // Navigation states inside editor
@@ -57,7 +57,7 @@ export default function DeckManager({
     sfx.playClick();
 
     const lines = bulkText.split('\n');
-    let addedCount = 0;
+    const cardsToAdd: Omit<Flashcard, 'id'>[] = [];
 
     let delimiter: string = ',';
     if (bulkDelimiter === 'tab') delimiter = '\t';
@@ -75,16 +75,20 @@ export default function DeckManager({
         const trans = parts[1]?.trim() || '';
         const pron = parts[2]?.trim() || '';
 
-        onAddCardToDeck(activeDeckId, {
+        cardsToAdd.push({
           character: char,
           pinyin: pron || '',
           english: trans || '',
         });
-        addedCount++;
       }
     });
 
+    if (cardsToAdd.length > 0) {
+      onAddCardsToDeck(activeDeckId, cardsToAdd);
+    }
+
     sfx.playSuccess();
+    const addedCount = cardsToAdd.length;
     setBulkText('');
     setShowBulkInput(false);
     setBulkSuccessMsg(`Successfully imported ${addedCount} cards to "${activeDeck?.name}" in bulk!`);
@@ -109,7 +113,7 @@ export default function DeckManager({
     if (!activeDeckId || !charVal.trim() || !pinyinVal.trim() || !englishVal.trim()) return;
     sfx.playClick();
 
-    onAddCardToDeck(activeDeckId, {
+    onAddCardsToDeck(activeDeckId, [{
       character: charVal.trim(),
       pinyin: pinyinVal.trim(),
       english: englishVal.trim(),
@@ -117,7 +121,7 @@ export default function DeckManager({
       examplePinyin: examplePinyinVal.trim() || undefined,
       exampleEnglish: exampleEnglishVal.trim() || undefined,
       audioHint: tipVal.trim() || undefined,
-    });
+    }]);
 
     // Reset card inputs
     setCharVal('');

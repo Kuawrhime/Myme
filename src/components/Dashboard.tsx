@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { BookOpen, Award, Flame, Calendar, Sparkles, CheckCircle2, ChevronRight, Play, Eye, Layers } from 'lucide-react';
+import { BookOpen, Award, Flame, Calendar, Sparkles, CheckCircle2, ChevronRight, Play, Eye, Layers, Sliders, RefreshCw } from 'lucide-react';
 import { Deck, UserProgress, SRSProgress } from '../types';
 
 interface DashboardProps {
@@ -12,8 +12,9 @@ interface DashboardProps {
   userProgress: UserProgress;
   timeMode: 'real' | 'fast';
   onTimeModeToggle: () => void;
-  onSelectDeck: (deck: Deck) => void;
+  onSelectDeck: (deck: Deck, initialMode?: 'choices' | 'learn' | 'classic' | 'speed') => void;
   onNavigateToTab: (tab: 'decks' | 'custom' | 'leaderboard' | 'stats') => void;
+  onResetDeckProgress: (deckId: string) => void;
 }
 
 export default function Dashboard({
@@ -23,8 +24,11 @@ export default function Dashboard({
   onTimeModeToggle,
   onSelectDeck,
   onNavigateToTab,
+  onResetDeckProgress,
 }: DashboardProps) {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'hsk1' | 'conversational' | 'travel' | 'custom'>('all');
+  const [settingsDeckId, setSettingsDeckId] = useState<string | null>(null);
+  const [deckResetConfirmText, setDeckResetConfirmText] = useState('');
 
   const now = Date.now();
 
@@ -49,36 +53,6 @@ export default function Dashboard({
   return (
     <div className="space-y-8 animate-fadeIn">
       
-      {/* Simulation Developer Speed Tuning Control Ribbon */}
-      <div className="bg-[#FFF5F5]/30 border border-brand-red/15 rounded-3xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm shadow-red-900/5">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-[#FFF5F5] text-brand-red rounded-xl shrink-0">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-sm font-extrabold text-brand-dark font-sans">
-              Spaced Repetition (SRS) Speed Scale
-            </div>
-            <div className="text-xs text-brand-gray font-medium">
-              We speed up review cycles for live demonstrations.
-              In <span className="font-bold underline">Fast Tour Mode</span>, 1 virtual day review interval is scaled to 30 seconds!
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={onTimeModeToggle}
-          id="btn-toggle-time-mode"
-          className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-purple shrink-0 cursor-pointer ${
-            timeMode === 'fast'
-              ? 'bg-brand-purple text-white hover:bg-brand-purple/90 shadow-brand-purple/10'
-              : 'bg-white text-brand-purple border border-brand-border hover:bg-brand-bg'
-          }`}
-        >
-          {timeMode === 'fast' ? '⚡ Fast Tour Mode (Due in 30s!)' : '📅 Real Days Mode (Due in 24h)'}
-        </button>
-      </div>
-
       {/* Grid of core metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         
@@ -229,19 +203,110 @@ export default function Dashboard({
               ? categoryColors['custom'] 
               : categoryColors[deck.category || 'hsk1'] || categoryColors['hsk1'];
 
+            if (settingsDeckId === deck.id) {
+              return (
+                <div
+                  key={deck.id}
+                  className="bg-white border-2 border-brand-purple rounded-2xl p-5 shadow-lg flex flex-col justify-between min-h-[310px] animate-fadeIn"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-brand-border pb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-brand-purple">
+                        <Sliders className="w-3.5 h-3.5" />
+                        <span>Deck Settings</span>
+                      </div>
+                      <button
+                        onClick={() => setSettingsDeckId(null)}
+                        className="text-xs text-brand-light-gray hover:text-brand-dark font-sans font-bold cursor-pointer hover:bg-brand-bg px-2 py-1 rounded"
+                      >
+                        ✕ Close
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-extrabold text-brand-dark tracking-tight font-sans">
+                        {deck.name}
+                      </h3>
+                      <p className="text-[11px] text-brand-gray leading-relaxed font-semibold">
+                        Configure study properties or reset custom space repetition records.
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-[#FFF5F5] border border-brand-red/10 rounded-xl space-y-3">
+                      <div className="text-[10px] font-mono font-bold text-brand-red uppercase tracking-wider">
+                        ⚠️ Danger Zone
+                      </div>
+                      <p className="text-[10px] text-red-900 leading-normal font-semibold">
+                        This deletes all your Spaced Repetition learning progress, intervals, and streak records for matching cards in this deck.
+                      </p>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-mono font-bold text-brand-gray uppercase">
+                          To confirm, type <span className="text-red-600 font-extrabold">RESET</span> below:
+                        </label>
+                        <input
+                          type="text"
+                          value={deckResetConfirmText}
+                          onChange={(e) => setDeckResetConfirmText(e.target.value)}
+                          placeholder="Type RESET"
+                          className="w-full px-2.5 py-1.5 border border-red-200 focus:border-red-500 rounded-lg text-xs font-mono bg-white outline-none"
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={() => {
+                          onResetDeckProgress(deck.id);
+                          setSettingsDeckId(null);
+                          setDeckResetConfirmText('');
+                        }}
+                        disabled={deckResetConfirmText.toUpperCase() !== 'RESET'}
+                        className={`w-full py-2.5 text-[11px] font-black rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                          deckResetConfirmText.toUpperCase() === 'RESET'
+                            ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                            : 'bg-red-200 text-red-400 cursor-not-allowed opacity-60'
+                        }`}
+                        title="Reset deck progress parameters to zero"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Confirm and Reset Learning Progress</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 text-center">
+                    <button
+                      onClick={() => setSettingsDeckId(null)}
+                      className="text-xs font-bold text-brand-gray hover:text-brand-dark cursor-pointer underline decoration-dotted"
+                    >
+                      ← Back to Deck Card
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={deck.id}
                 className="bg-white border border-brand-border border-b-4 border-b-brand-border rounded-2xl p-5 hover:shadow-xl hover:shadow-indigo-900/5 hover:border-brand-purple/20 hover:border-b-brand-purple/40 transition-all duration-200 flex flex-col justify-between group"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-1">
                     <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${activeColor}`}>
                       {(deck.language || 'Chinese')} • {deck.isCustom ? 'Custom' : (deck.category === 'hsk1' ? 'HSK 1' : deck.category)}
                     </span>
-                    <span className="text-xs font-mono font-medium text-brand-light-gray">
-                      {totalCards} {totalCards === 1 ? 'card' : 'cards'}
-                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeckResetConfirmText('');
+                        setSettingsDeckId(deck.id);
+                      }}
+                      className="p-1 px-1.5 border border-brand-border hover:border-brand-purple hover:text-brand-purple rounded-lg font-mono text-[10px] font-bold text-brand-light-gray flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Open Deck Settings"
+                    >
+                      <Sliders className="w-2.5 h-2.5" />
+                      <span>Settings</span>
+                    </button>
                   </div>
 
                   <div>
@@ -270,7 +335,9 @@ export default function Dashboard({
                   </div>
 
                   <div className="flex items-center justify-between text-xs font-mono font-semibold text-brand-light-gray leading-none">
-                    <span>{studiedCount} learnt</span>
+                    <div className="flex items-center gap-1.5">
+                      <span>{studiedCount} learnt</span>
+                    </div>
                     {dueCount > 0 && (
                       <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-100 text-[10px] flex items-center gap-1 animate-pulse">
                         <span className="h-1 w-1 bg-emerald-500 rounded-full"></span>
@@ -280,28 +347,39 @@ export default function Dashboard({
                   </div>
 
                   <div className="flex gap-2 pt-1 w-full">
-                    {/* Learn Button */}
-                    <button
-                      onClick={() => onSelectDeck(deck)}
-                      id={`deck-btn-learn-${deck.id}`}
-                      className="flex-1 py-2.5 px-3 bg-brand-purple hover:bg-brand-purple/95 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-white" />
-                      <span>{studiedCount === 0 ? 'Study Deck' : 'Resume Course'}</span>
-                    </button>
-                    
-                    {/* If there are items due, offer clear prioritized Action button */}
-                    {dueCount > 0 && (
+                    {studiedCount === 0 ? (
+                      /* Default: Learn new words */
                       <button
-                        onClick={() => onSelectDeck(deck)}
-                        id={`deck-btn-review-${deck.id}`}
-                        className="py-2.5 px-3.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200 cursor-pointer flex items-center gap-1 transition-colors"
-                        title="Review Spaced Cards Now"
+                        onClick={() => onSelectDeck(deck, 'learn')}
+                        id={`deck-btn-learn-${deck.id}`}
+                        className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5 animate-fadeIn"
+                        title="Learn new words in this deck (baseline)"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Review ({dueCount})</span>
+                        <Play className="w-3.5 h-3.5 fill-white" />
+                        <span>Learn new words</span>
+                      </button>
+                    ) : (
+                      /* Default: Classic review (we have already studied some cards) */
+                      <button
+                        onClick={() => onSelectDeck(deck, 'classic')}
+                        id={`deck-btn-review-${deck.id}`}
+                        className="flex-1 py-2.5 px-3 bg-[#10B981] hover:bg-[#059669] text-white text-xs font-black rounded-xl transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5 animate-fadeIn"
+                        title="Strengthen retention with classic spaced repetition"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Classic review</span>
                       </button>
                     )}
+
+                    {/* Choose Mode Button right next to it */}
+                    <button
+                      onClick={() => onSelectDeck(deck, 'choices')}
+                      id={`deck-btn-choices-${deck.id}`}
+                      className="p-2.5 bg-[#1E3A8A]/90 hover:bg-[#1E3A8A] text-[#FBBF24] hover:text-[#FAA200] rounded-xl flex items-center justify-center cursor-pointer transition-colors"
+                      title="Choose custom study function (Learn / Classic / Speed Review)"
+                    >
+                      <Sliders className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </div>

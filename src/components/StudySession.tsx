@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Volume2, X, Check, AlertTriangle, ArrowRight, Lightbulb, Sparkles, Award } from 'lucide-react';
+import { Volume2, VolumeX, X, Check, AlertTriangle, ArrowRight, Lightbulb, Sparkles, Award } from 'lucide-react';
 import { Deck, Flashcard, SRSProgress } from '../types';
 import { sfx } from '../utils/audio';
 
@@ -13,19 +13,43 @@ interface StudySessionProps {
   deck: Deck;
   srsRecords: Record<string, SRSProgress>;
   timeMode: 'real' | 'fast';
+  initialSessionMode?: 'choices' | 'learn' | 'classic' | 'speed';
   onCardReviewed: (cardId: string, rating: 'again' | 'hard' | 'good' | 'easy', xpEarned: number) => void;
   onClose: () => void;
+  isMuted?: boolean;
+  onToggleMute?: (muted: boolean) => void;
 }
 
 export default function StudySession({
   deck,
   srsRecords,
   timeMode,
+  initialSessionMode,
   onCardReviewed,
   onClose,
+  isMuted,
+  onToggleMute,
 }: StudySessionProps) {
+  const [muteTrigger, setMuteTrigger] = useState(isMuted ?? sfx.getMuted());
+
+  useEffect(() => {
+    if (isMuted !== undefined) {
+      setMuteTrigger(isMuted);
+    }
+  }, [isMuted]);
+
+  const handleToggleMute = (newMute: boolean) => {
+    sfx.setMuted(newMute);
+    setMuteTrigger(newMute);
+    if (onToggleMute) {
+      onToggleMute(newMute);
+    }
+  };
+
   // Navigation: choice configurator or actual study
-  const [sessionMode, setSessionMode] = useState<'choices' | 'learn' | 'classic' | 'speed'>('choices');
+  const [sessionMode, setSessionMode] = useState<'choices' | 'learn' | 'classic' | 'speed'>(
+    initialSessionMode || 'choices'
+  );
   
   // Filter appropriate cards for studying:
   const [cardsToStudy, setCardsToStudy] = useState<Flashcard[]>([]);
@@ -48,28 +72,63 @@ export default function StudySession({
   const [lives, setLives] = useState(3);
   const [speedReviewFail, setSpeedReviewFail] = useState(false);
   const [speedSuccessCount, setSpeedSuccessCount] = useState(0);
-  const [timerCount, setTimerCount] = useState(6);
+  const [timerCount, setTimerCount] = useState(10);
 
   const timerIntervalRef = useRef<any>(null);
+  const transitionTimeoutRef = useRef<any>(null);
   const activeCard = cardsToStudy[currentIndex];
 
-  // Initialize study queue
+  // Initialize study queue based on selected sessionMode
   useEffect(() => {
     const list = [...deck.cards];
-    // Sort so cards that are brand new or due sooner come first
-    list.sort((a, b) => {
-      const aRec = srsRecords[a.id];
-      const bRec = srsRecords[b.id];
-      if (!aRec) return -1; // new first
-      if (!bRec) return 1;
-      return aRec.nextReviewTime - bRec.nextReviewTime;
-    });
-    setCardsToStudy(list);
+    if (sessionMode === 'learn') {
+      // Chunk into lessons of 3 cards in original deck order
+      const lessons: Flashcard[][] = [];
+      for (let i = 0; i < list.length; i += 3) {
+        lessons.push(list.slice(i, i + 3));
+      }
+      // Find first lesson that has at least one card with 0 repetitions (unlearned / new)
+      const activeLesson = lessons.find(l =>
+        l.some(c => !srsRecords[c.id] || (srsRecords[c.id]?.repetitions ?? 0) === 0)
+      ) || lessons[0] || [];
+      
+      setCardsToStudy(activeLesson);
+    } else if (sessionMode === 'classic') {
+      // Classic review only for cards the user has already studied
+      const seenCards = list.filter(c => {
+        const rec = srsRecords[c.id];
+        return rec && rec.repetitions > 0;
+      });
+      seenCards.sort((a, b) => {
+        const aRec = srsRecords[a.id]!;
+        const bRec = srsRecords[b.id]!;
+        return aRec.nextReviewTime - bRec.nextReviewTime;
+      });
+      setCardsToStudy(seenCards);
+    } else if (sessionMode === 'speed') {
+      // Speed review only for cards the user has already studied
+      const seenCards = list.filter(c => {
+        const rec = srsRecords[c.id];
+        return rec && rec.repetitions > 0;
+      });
+      seenCards.sort(() => 0.5 - Math.random());
+      setCardsToStudy(seenCards);
+    } else {
+      list.sort((a, b) => {
+        const aRec = srsRecords[a.id];
+        const bRec = srsRecords[b.id];
+        if (!aRec) return -1; // brand new first
+        if (!bRec) return 1;
+        return aRec.nextReviewTime - bRec.nextReviewTime;
+      });
+      setCardsToStudy(list);
+    }
     setCurrentIndex(0);
-  }, [deck, srsRecords]);
+  }, [deck, sessionMode]);
 
   // Read Card character using local Text-to-Speech (native browser voice)
   const speakText = (text: string) => {
+    if (sfx.getMuted()) return;
     if (!('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
@@ -113,7 +172,7 @@ export default function StudySession({
       return;
     }
 
-    setTimerCount(6);
+    setTimerCount(10);
 
     timerIntervalRef.current = setInterval(() => {
       setTimerCount(prev => {
@@ -133,7 +192,10 @@ export default function StudySession({
           setQuizIsCorrect(false);
           setQuizSubmitted(true);
 
-          setTimeout(() => {
+          if (transitionTimeoutRef.current) {
+            clearTimeout(transitionTimeoutRef.current);
+          }
+          transitionTimeoutRef.current = setTimeout(() => {
             handleNextCard();
           }, 1200);
 
@@ -162,7 +224,7 @@ export default function StudySession({
       const bReps = bRec?.repetitions ?? 0;
       return aReps - bReps;
     });
-    setCardsToStudy(list);
+    setCardsToStudy(list.slice(0, 3));
     setCurrentIndex(0);
     setSessionMode('learn');
   };
@@ -196,6 +258,7 @@ export default function StudySession({
   // Determine appropriate quiz options and mode for the current card
   useEffect(() => {
     if (!activeCard) return;
+    if (sessionMode === 'choices') return; // Absolute guard: do not play sound or initialize questions during mode select!
 
     setIsFlipped(false);
     setTypedAnswer('');
@@ -209,6 +272,9 @@ export default function StudySession({
 
     if (sessionMode === 'speed') {
       mode = Math.random() > 0.5 ? 'mc-english' : 'mc-pinyin';
+    } else if (sessionMode === 'learn') {
+      // Learning new words session mode strictly introduces each card first
+      mode = 'intro';
     } else if (!rec) {
       mode = 'intro';
     } else {
@@ -251,11 +317,17 @@ export default function StudySession({
 
       setMultipleChoiceOptions(allChoices);
     }
-  }, [currentIndex, activeCard, deck, srsRecords]);
+  }, [currentIndex, activeCard, deck, sessionMode]);
 
   // Keyboard controls key bindings
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore global shortcut triggers if the user is currently typing in an input text field!
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+
       // Space to flip or proceed
       if (e.code === 'Space') {
         e.preventDefault();
@@ -286,7 +358,8 @@ export default function StudySession({
           if (e.key === '4') handleSelfRateSubmit('easy');
         }
       } else {
-        if (e.key === 'Enter') {
+        // Disallow double manual progression triggers in speed review since it auto-advances
+        if (sessionMode !== 'speed' && e.key === 'Enter') {
           handleNextCard();
         }
       }
@@ -307,9 +380,10 @@ export default function StudySession({
   // Handle click on introductory "Got it" card
   const handleIntroCompleted = () => {
     sfx.playClick();
-    // Shift introductory card to "self-rate" mode inside the session so user understands
-    setTestMode('self-rate');
-    setIsFlipped(true);
+    // Register the card as successfully learned/introduced
+    onCardReviewed(activeCard.id, 'good', 10);
+    // Proceed immediately to the next card
+    handleNextCard();
   };
 
   // Submit multiple choice quiz choice
@@ -368,7 +442,6 @@ export default function StudySession({
   const handleSpellingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (quizSubmitted) return;
-    if (!typedAnswer.trim()) return;
 
     // Normalizing input to let users write flat letters without tone accent marks optionally!
     // Example: accept "nihao" or "ni hao" for "nǐ hǎo"
@@ -404,8 +477,10 @@ export default function StudySession({
     };
 
     const isCorrect = 
-      parsedInput === cleanCorrect || 
-      stripTones(typedAnswer).trim().toLowerCase().replace(/\s+/g, '') === stripTones(activeCard.pinyin).trim().toLowerCase().replace(/\s+/g, '');
+      !!typedAnswer.trim() && (
+        parsedInput === cleanCorrect || 
+        stripTones(typedAnswer).trim().toLowerCase().replace(/\s+/g, '') === stripTones(activeCard.pinyin).trim().toLowerCase().replace(/\s+/g, '')
+      );
 
     setQuizIsCorrect(isCorrect);
     setQuizSubmitted(true);
@@ -467,17 +542,58 @@ export default function StudySession({
   // Check if we are finished
   const isFinished = currentIndex >= cardsToStudy.length;
 
+  const deckLessons: Flashcard[][] = [];
+  for (let i = 0; i < deck.cards.length; i += 3) {
+    deckLessons.push(deck.cards.slice(i, i + 3));
+  }
+
+  const hasUnfinishedLesson = deckLessons.some(lesson => {
+    const total = lesson.length;
+    const studiedCount = lesson.filter(card => {
+      const rec = srsRecords[card.id];
+      return rec && rec.repetitions > 0;
+    }).length;
+    return studiedCount > 0 && studiedCount < total;
+  });
+
+  const totalSeenWords = deck.cards.filter(c => {
+    const rec = srsRecords[c.id];
+    return rec && rec.repetitions > 0;
+  }).length;
+
+  const hasSeenWords = totalSeenWords > 0;
+  const canShowReviewModes = hasSeenWords && !hasUnfinishedLesson;
+
   if (sessionMode === 'choices') {
     return (
       <div className="fixed inset-0 z-50 bg-brand-bg/98 backdrop-blur-md flex flex-col items-center justify-center overflow-y-auto px-4 py-6 md:p-8">
         <div className="w-full max-w-xl bg-white border border-brand-border rounded-3xl p-6 sm:p-10 shadow-xl space-y-6 animate-fadeIn relative">
           
-          <button 
-            onClick={onClose}
-            className="absolute top-5 right-5 p-2 hover:bg-brand-bg rounded-full text-brand-gray hover:text-brand-dark transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="absolute top-5 right-5 flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                const newMute = !muteTrigger;
+                handleToggleMute(newMute);
+                if (!newMute) {
+                  sfx.playClick();
+                }
+              }}
+              className="p-1.5 hover:bg-brand-bg rounded-full text-brand-purple hover:text-brand-purple/80 transition-all cursor-pointer flex items-center justify-center"
+              title={muteTrigger ? "Unmute Deck Audio" : "Mute Deck Audio"}
+            >
+              {muteTrigger ? (
+                <VolumeX className="w-4.5 h-4.5 text-red-500 animate-pulse" />
+              ) : (
+                <Volume2 className="w-4.5 h-4.5 text-brand-purple" />
+              )}
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-1.5 hover:bg-brand-bg rounded-full text-brand-gray hover:text-brand-dark transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
           <div className="text-center space-y-2">
             <span className="text-[10px] font-mono font-black tracking-widest bg-brand-purple/10 text-brand-purple px-3 py-1 rounded-full uppercase">
@@ -492,87 +608,104 @@ export default function StudySession({
           </div>
 
           <div className="space-y-4 pt-2">
-            {/* GIANT GOLD BUTTON: Learn new words (as displayed in screenshot) */}
+            {/* GIANT BLUE BUTTON: Learn new words (as displayed in screenshot) */}
             <button
               onClick={startLearnMode}
               id="btn-learn-new-mode"
-              className="w-full text-left p-5 bg-[#FFFCE8] hover:bg-[#FFF9CC] border-2 border-[#FFE082] rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group hover:scale-[1.01] hover:shadow-md"
+              className="w-full text-left p-5 bg-blue-50/70 hover:bg-blue-50 border-2 border-blue-200 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group hover:scale-[1.01] hover:shadow-md"
             >
               <div className="flex items-start gap-4">
-                <div className="p-3 bg-[#FFE0B2] text-[#E65100] rounded-xl font-bold flex items-center justify-center shrink-0">
+                <div className="p-3 bg-blue-100 text-blue-700 rounded-xl font-bold flex items-center justify-center shrink-0">
                   🌱
                 </div>
                 <div>
-                  <h4 className="font-sans font-black text-brand-dark text-sm sm:text-base group-hover:text-amber-800 transition-colors flex items-center gap-1.5">
+                  <h4 className="font-sans font-black text-brand-dark text-sm sm:text-base group-hover:text-blue-800 transition-colors flex items-center gap-1.5">
                     <span>Learn new words</span>
-                    <span className="text-[9px] uppercase font-mono font-bold bg-[#FFE0B2] text-[#E65100] px-1.5 py-0.5 rounded-full">
+                    <span className="text-[9px] uppercase font-mono font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
                       Default
                     </span>
                   </h4>
-                  <p className="text-[11px] text-[#5D4037] leading-relaxed mt-0.5 font-medium">
-                    Learn new words or establish baseline SRS levels. Focuses heavy repetitions on unstudied words.
+                  <p className="text-[11px] text-blue-900/80 leading-relaxed mt-0.5 font-medium">
+                    Learn new words or establish baseline SRS levels. Focuses heavy repetitions on lessons of 3 unstudied words.
                   </p>
                 </div>
               </div>
-              <span className="text-lg font-bold text-amber-800 group-hover:translate-x-1 transition-transform">➔</span>
+              <span className="text-lg font-bold text-blue-700 group-hover:translate-x-1 transition-transform">➔</span>
             </button>
 
-            <div className="flex items-center justify-center my-2 text-center text-xs font-mono font-bold text-brand-light-gray uppercase tracking-widest relative">
-              <span className="bg-white px-3 z-10">Or choose your session</span>
-              <div className="absolute inset-x-0 top-1/2 h-0.5 bg-brand-border" />
-            </div>
-
-            {/* CLASSIC REVIEW OPTION */}
-            <button
-              onClick={startClassicMode}
-              id="btn-classic-review-mode"
-              className="w-full text-left p-4 hover:bg-brand-bg border border-brand-border hover:border-brand-purple rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
-            >
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-[#E8F5E9] text-[#2E7D32] rounded-xl font-bold flex items-center justify-center shrink-0">
-                  Shower
-                </div>
-                <div>
-                  <h4 className="font-sans font-extrabold text-brand-dark text-sm group-hover:text-brand-purple transition-colors flex items-center gap-2">
-                    <span>Classic review</span>
-                    {deck.cards.length > 0 && (
-                      <span className="text-[9px] font-mono font-bold bg-[#A5D6A7] text-[#1B5E20] px-1.5 py-0.5 rounded-full">
-                        {deck.cards.length} cards
-                      </span>
-                    )}
-                  </h4>
-                  <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
-                    Spaced repetition smart logic. Strengthen long-term retention using adaptive self-rating levels.
-                  </p>
-                </div>
+            {!canShowReviewModes && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+                <span className="text-lg">💡</span>
+                <p className="text-xs text-amber-950 font-semibold leading-relaxed">
+                  {hasUnfinishedLesson ? (
+                    <span>You left your active lesson before finishing learning the 3 words! Please click <strong>"Learn new words"</strong> to finish learning them. <strong>Classic Review</strong> and <strong>Speed Review</strong> will reappear once the active lesson is completed.</span>
+                  ) : (
+                    <span>You haven't learned any vocabulary words in this deck yet! Click <strong>"Learn new words"</strong> above to learn your first lesson of 3 words and unlock spaced repetition reviews.</span>
+                  )}
+                </p>
               </div>
-              <span className="text-lg text-brand-purple group-hover:translate-x-1 transition-transform">➔</span>
-            </button>
+            )}
 
-            {/* SPEED REVIEW OPTION */}
-            <button
-              onClick={startSpeedMode}
-              id="btn-speed-review-mode"
-              className="w-full text-left p-4 hover:bg-[#F3E5F5] hover:border-[#BA68C8] border border-brand-border rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
-            >
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-[#F3E5F5] text-[#7B1FA2] rounded-xl font-bold flex items-center justify-center shrink-0">
-                  ⏱️
+            {canShowReviewModes && (
+              <>
+                <div className="flex items-center justify-center my-2 text-center text-xs font-mono font-bold text-brand-light-gray uppercase tracking-widest relative">
+                  <span className="bg-white px-3 z-10">Or choose your session</span>
+                  <div className="absolute inset-x-0 top-1/2 h-0.5 bg-brand-border" />
                 </div>
-                <div>
-                  <h4 className="font-sans font-extrabold text-[#7B1FA2] text-sm flex items-center gap-2">
-                    <span>Speed review</span>
-                    <span className="text-[9px] font-mono font-bold bg-[#E1BEE7] text-[#7B1FA2] px-1.5 py-0.5 rounded-full">
-                      Hectic Match
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
-                    6-second limit per card with a 3-point loss system if you fail. Answer rapidly, beat the clock!
-                  </p>
-                </div>
-              </div>
-              <span className="text-lg text-[#7B1FA2] group-hover:translate-x-1 transition-transform">➔</span>
-            </button>
+
+                {/* CLASSIC REVIEW OPTION */}
+                <button
+                  onClick={startClassicMode}
+                  id="btn-classic-review-mode"
+                  className="w-full text-left p-4 hover:bg-brand-bg border border-brand-border hover:border-brand-purple rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 bg-[#E8F5E9] text-[#2E7D32] rounded-xl font-bold flex items-center justify-center shrink-0">
+                      Shower
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-extrabold text-brand-dark text-sm group-hover:text-brand-purple transition-colors flex items-center gap-2">
+                        <span>Classic review</span>
+                        {totalSeenWords > 0 && (
+                          <span className="text-[9px] font-mono font-bold bg-[#A5D6A7] text-[#1B5E20] px-1.5 py-0.5 rounded-full">
+                            {totalSeenWords} learnt cards
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
+                        Spaced repetition smart logic. Strengthen long-term retention using adaptive self-rating levels.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-lg text-brand-purple group-hover:translate-x-1 transition-transform">➔</span>
+                </button>
+
+                {/* SPEED REVIEW OPTION */}
+                <button
+                  onClick={startSpeedMode}
+                  id="btn-speed-review-mode"
+                  className="w-full text-left p-4 hover:bg-[#F3E5F5] hover:border-[#BA68C8] border border-brand-border rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all group"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 bg-[#F3E5F5] text-[#7B1FA2] rounded-xl font-bold flex items-center justify-center shrink-0">
+                      ⏱️
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-extrabold text-[#7B1FA2] text-sm flex items-center gap-2">
+                        <span>Speed review</span>
+                        <span className="text-[9px] font-mono font-bold bg-[#E1BEE7] text-[#7B1FA2] px-1.5 py-0.5 rounded-full">
+                          Hectic Match
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-brand-gray mt-0.5 font-medium leading-relaxed">
+                        10-second limit per card with a 3-point loss system if you fail. Answer rapidly, beat the clock!
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-lg text-[#7B1FA2] group-hover:translate-x-1 transition-transform">➔</span>
+                </button>
+              </>
+            )}
 
           </div>
 
@@ -735,25 +868,91 @@ export default function StudySession({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm pt-4">
-                <button
-                  onClick={() => {
-                    // Quick restart session
-                    setCurrentIndex(0);
-                    setXpEarnedThisSession(0);
-                  }}
-                  id="btn-restart-study-session"
-                  className="w-full py-3 bg-brand-bg hover:bg-brand-border text-brand-dark font-extrabold rounded-xl transition-colors cursor-pointer text-sm"
-                >
-                  Study Again
-                </button>
-                <button
-                  onClick={onClose}
-                  id="btn-finish-study-session"
-                  className="w-full py-3 bg-brand-purple hover:bg-brand-purple/95 text-white font-extrabold rounded-xl shadow-lg shadow-indigo-100 transition-all cursor-pointer text-sm"
-                >
-                  Return to Dashboard
-                </button>
+              <div className="flex flex-col gap-3.5 w-full max-w-sm pt-4">
+                {sessionMode === 'learn' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        sfx.playClick();
+                        setXpEarnedThisSession(0);
+                        startClassicMode();
+                      }}
+                      id="btn-finish-go-classic"
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition-all cursor-pointer text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>🔄 Classic Review for these words</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        sfx.playClick();
+                        setXpEarnedThisSession(0);
+                        startLearnMode();
+                      }}
+                      id="btn-finish-go-learn-more"
+                      className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-xs transition-all cursor-pointer text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>🌱 Learn 3 More New Words</span>
+                    </button>
+                  </>
+                ) : sessionMode === 'classic' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        sfx.playClick();
+                        setXpEarnedThisSession(0);
+                        startLearnMode();
+                      }}
+                      id="btn-finish-go-learn"
+                      className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md transition-all cursor-pointer text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>🌱 Learn New Words mode</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        sfx.playClick();
+                        setXpEarnedThisSession(0);
+                        startClassicMode();
+                      }}
+                      id="btn-finish-go-classic-again"
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-xs transition-all cursor-pointer text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span>🔄 Review Again (Classic)</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      sfx.playClick();
+                      setXpEarnedThisSession(0);
+                      setSessionMode('choices');
+                    }}
+                    id="btn-finish-choose-mode"
+                    className="w-full py-3 px-4 bg-brand-purple hover:bg-brand-purple/95 text-white font-black rounded-xl shadow-md transition-all cursor-pointer text-xs"
+                  >
+                    Go Choose Another Mode
+                  </button>
+                )}
+
+                <div className="flex gap-2 w-full pt-1">
+                  <button
+                    onClick={() => {
+                      sfx.playClick();
+                      setSessionMode('choices');
+                    }}
+                    id="btn-study-configurator-secondary"
+                    className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-extrabold rounded-xl transition-colors cursor-pointer text-[11px]"
+                  >
+                    All Modes
+                  </button>
+                  
+                  <button
+                    onClick={onClose}
+                    id="btn-finish-return-dash"
+                    className="flex-1 py-2.5 bg-brand-purple hover:bg-brand-purple/95 text-white font-extrabold rounded-xl transition-colors cursor-pointer text-[11px]"
+                  >
+                    Return to Home
+                  </button>
+                </div>
               </div>
             </motion.div>
           ) : (
@@ -780,20 +979,50 @@ export default function StudySession({
                       {testMode === 'spelling' && 'Type the word Pinyin'}
                     </span>
                   </div>
-                  <button
-                    onClick={() => speakText(activeCard.character)}
-                    id="btn-speak-character-audio"
-                    className="p-2 hover:bg-brand-bg rounded-xl text-brand-purple hover:text-brand-purple/80 transition-colors cursor-pointer"
-                    title="Pronounce Word"
-                  >
-                    <Volume2 className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        const newMute = !muteTrigger;
+                        handleToggleMute(newMute);
+                        if (!newMute) {
+                          sfx.playClick();
+                        }
+                      }}
+                      className="p-1.5 hover:bg-brand-bg rounded-xl text-brand-purple/80 hover:text-brand-purple transition-all cursor-pointer flex items-center justify-center"
+                      title={muteTrigger ? "Unmute Audio" : "Mute Audio"}
+                    >
+                      {muteTrigger ? (
+                        <VolumeX className="w-4.5 h-4.5 text-red-500 animate-pulse" />
+                      ) : (
+                        <Volume2 className="w-4.5 h-4.5 text-brand-purple/60 hover:text-brand-purple" />
+                      )}
+                    </button>
+                    {!muteTrigger && (
+                      <button
+                        onClick={() => speakText(activeCard.character)}
+                        id="btn-speak-character-audio"
+                        className="p-1.5 hover:bg-brand-bg rounded-xl text-brand-purple hover:text-brand-purple/80 transition-colors cursor-pointer flex items-center justify-center animate-pulse"
+                        title="Pronounce Word"
+                      >
+                        <Volume2 className="w-4.5 h-4.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={handleSkip}
+                      id="btn-quick-skip-active-card"
+                      className="ml-1 px-2.5 py-1 text-[11px] font-bold text-brand-gray hover:text-brand-dark bg-brand-bg hover:bg-stone-100 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-brand-border"
+                      title="Skip / Go to Next Card"
+                    >
+                      <span>Skip</span>
+                      <ArrowRight className="w-3" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Central main learning view body */}
                 <div className="flex flex-col items-center justify-center py-6 flex-1 text-center">
                   {/* Large character display */}
-                  <div className="text-6xl sm:text-7xl font-sans text-brand-dark tracking-wide select-none font-black mb-2 animate-pulse">
+                  <div className="text-6xl sm:text-7xl font-sans text-brand-dark tracking-wide select-none font-black mb-2">
                     {activeCard.character}
                   </div>
 
@@ -878,7 +1107,7 @@ export default function StudySession({
                         id="btn-intro-continue"
                         className="w-full sm:w-auto px-8 py-3.5 bg-brand-purple hover:bg-brand-purple/95 text-white font-extrabold rounded-2xl shadow-md text-sm transition-all cursor-pointer flex items-center justify-center gap-2"
                       >
-                        <span>Got it, let's learn!</span>
+                        <span>Got it! Next word</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                       <span className="text-[10px] font-mono text-brand-light-gray mt-2">
@@ -1022,20 +1251,21 @@ export default function StudySession({
               </div>
 
               {/* Lower Skip layout controls */}
-              {!quizSubmitted && testMode !== 'intro' && (
+              {!quizSubmitted && (
                 <div className="mt-3 flex items-center justify-between px-2 text-brand-gray text-xs font-medium">
                   <span className="font-mono">
-                    {testMode === 'self-rate' && !isFlipped 
-                      ? '[Space] Reveal' 
-                      : (testMode === 'self-rate' 
-                        ? '[1-4] Rate' 
-                        : '[1-4] Select Option')}
+                    {testMode === 'intro' && '[Space] Continue'}
+                    {testMode === 'self-rate' && !isFlipped && '[Space] Reveal'}
+                    {testMode === 'self-rate' && isFlipped && '[1-4] Rate'}
+                    {(testMode === 'mc-pinyin' || testMode === 'mc-english') && '[1-4] Select'}
+                    {testMode === 'spelling' && '[Enter] Check'}
                   </span>
                   
                   <button
                     onClick={handleSkip}
                     id="btn-skip-active-card"
-                    className="hover:text-brand-dark tracking-wide font-bold flex items-center gap-1.5 cursor-pointer underline"
+                    className="hover:text-brand-dark tracking-wide font-bold flex items-center gap-1.5 cursor-pointer underline hover:no-underline"
+                    title="Skip card"
                   >
                     <span>Skip card</span>
                     <ArrowRight className="w-3 h-3" />

@@ -47,6 +47,13 @@ export interface UserProgress {
   history: Record<string, number>; // date (YYYY-MM-DD) -> XP earned
   remindersEnabled: boolean;
   reminderGoal: number; // minutes per day
+  username?: string;
+  avatarColor?: string;
+  avatarUrl?: string;
+  email?: string;
+  language?: string;
+  timezone?: string;
+  audioMuted?: boolean;
 }
 
 export interface LeaderboardEntry {

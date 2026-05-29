@@ -5,6 +5,16 @@
 
 class SoundEffects {
   private ctx: AudioContext | null = null;
+  private isMuted: boolean = localStorage.getItem('srs_chinese_audio_muted') === 'true';
+
+  setMuted(muted: boolean) {
+    this.isMuted = muted;
+    localStorage.setItem('srs_chinese_audio_muted', muted ? 'true' : 'false');
+  }
+
+  getMuted(): boolean {
+    return this.isMuted;
+  }
 
   private init() {
     try {
@@ -20,6 +30,7 @@ class SoundEffects {
   }
 
   playSuccess() {
+    if (this.isMuted) return;
     this.init();
     if (!this.ctx) return;
     try {
@@ -56,6 +67,7 @@ class SoundEffects {
   }
 
   playFailure() {
+    if (this.isMuted) return;
     this.init();
     if (!this.ctx) return;
     try {
@@ -83,6 +95,7 @@ class SoundEffects {
   }
 
   playClick() {
+    if (this.isMuted) return;
     this.init();
     if (!this.ctx) return;
     try {
@@ -106,6 +119,7 @@ class SoundEffects {
   }
 
   playStreaks() {
+    if (this.isMuted) return;
     this.init();
     if (!this.ctx) return;
     try {

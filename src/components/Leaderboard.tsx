@@ -10,20 +10,23 @@ import { LeaderboardEntry } from '../types';
 interface LeaderboardProps {
   userXp: number;
   userStreak: number;
+  username?: string;
+  avatarColor?: string;
 }
 
 const DEFAULT_COMPETITORS: Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'>[] = [
-  { id: 'comp-1', username: 'Chloe_Chinese 🇨🇦', xp: 480, streak: 12, avatarColor: 'bg-emerald-500' },
-  { id: 'comp-2', username: 'Yuki_Yong 🇯🇵', xp: 350, streak: 8, avatarColor: 'bg-indigo-500' },
-  { id: 'comp-3', username: 'Aiden_Luvs_Hanyu 🇬🇧', xp: 220, streak: 5, avatarColor: 'bg-amber-500' },
-  { id: 'comp-4', username: 'MeiLing_Master 🇹🇼', xp: 620, streak: 18, avatarColor: 'bg-rose-500' },
-  { id: 'comp-5', username: 'Gerardo_DE 🇩🇪', xp: 140, streak: 3, avatarColor: 'bg-teal-500' },
-  { id: 'comp-6', username: 'Sarah_Nihao 🇺🇸', xp: 90, streak: 2, avatarColor: 'bg-cyan-500' }
+  { id: 'comp-1', username: 'Chloe_Polyglot 🇨🇦', xp: 240, streak: 6, avatarColor: 'bg-emerald-500' },
+  { id: 'comp-2', username: 'Yuki_Spanish 🇯🇵', xp: 180, streak: 4, avatarColor: 'bg-indigo-500' },
+  { id: 'comp-3', username: 'Aiden_French 🇬🇧', xp: 110, streak: 2, avatarColor: 'bg-amber-500' },
+  { id: 'comp-4', username: 'MeiLing_Spanish 🇹🇼', xp: 320, streak: 9, avatarColor: 'bg-rose-500' },
+  { id: 'comp-5', username: 'Gerardo_DE 🇩🇪', xp: 70, streak: 1, avatarColor: 'bg-teal-500' }
 ];
 
 export default function Leaderboard({
   userXp,
   userStreak,
+  username,
+  avatarColor,
 }: LeaderboardProps) {
   const [board, setBoard] = useState<LeaderboardEntry[]>([]);
 
@@ -43,10 +46,10 @@ export default function Leaderboard({
     // 2. Synthesize user progress entry
     const userEntry: Omit<LeaderboardEntry, 'rank' | 'isCurrentUser'> = {
       id: 'current-user-id',
-      username: 'You (Learning Hero) 🌟',
+      username: username || 'You (Learning Hero) 🌟',
       xp: userXp,
       streak: userStreak,
-      avatarColor: 'bg-indigo-600'
+      avatarColor: avatarColor || 'bg-indigo-600'
     };
 
     const combinedList = [...competitors.filter(c => c.id !== 'current-user-id'), userEntry];
@@ -69,61 +72,14 @@ export default function Leaderboard({
 
   }, [userXp, userStreak]);
 
-  // Periodic passive updates of other competitors (they gain a small amount of XP over time!)
-  // This simulates active users on the app and keeps the user highly motivated to play!
-  useEffect(() => {
-    const handlePassiveCompetition = setInterval(() => {
-      const cached = localStorage.getItem('srs_chinese_leaderboard');
-      let competitors = DEFAULT_COMPETITORS;
-      if (cached) {
-        try {
-          competitors = JSON.parse(cached);
-        } catch (e) {
-          competitors = DEFAULT_COMPETITORS;
-        }
-      }
-
-      // Roll chance for a random competitor to get some points
-      const updated = competitors.map(comp => {
-        const roll = Math.random();
-        if (roll > 0.70) { // 30% chance each period
-          const bonusXp = Math.floor(Math.random() * 20) + 5;
-          const streakRoll = Math.random() > 0.9;
-          return {
-            ...comp,
-            xp: comp.xp + bonusXp,
-            streak: streakRoll ? comp.streak + 1 : comp.streak
-          };
-        }
-        return comp;
-      });
-
-      localStorage.setItem('srs_chinese_leaderboard', JSON.stringify(updated));
-      
-      // Force trigger state rebuild by re-triggering user variables
-      setBoard(prev => {
-        const userE = prev.find(p => p.isCurrentUser);
-        if (!userE) return prev;
-        const combined = [...updated, { id: 'current-user-id', username: userE.username, xp: userE.xp, streak: userE.streak, avatarColor: userE.avatarColor }];
-        combined.sort((a, b) => b.xp - a.xp);
-        return combined.map((entry, idx) => ({
-          ...entry,
-          rank: idx + 1,
-          isCurrentUser: entry.id === 'current-user-id'
-        }));
-      });
-
-    }, 35000); // Check every 35 seconds
-
-    return () => clearInterval(handlePassiveCompetition);
-  }, []);
+  // No simulated background updates are applied to the competitor standings anymore.
 
   const currentUser = board.find(x => x.isCurrentUser);
   const userRank = currentUser?.rank || 0;
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Dynamic motivate banner */}
+      {/* Standings Banner */}
       <div className="bg-brand-dark text-white rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden shadow-lg">
         
         {/* Abstract vector backgrounds */}
@@ -134,10 +90,10 @@ export default function Leaderboard({
             🏆 Interactive Leaderboard
           </span>
           <h2 className="text-2xl font-black tracking-tight font-sans">
-            Chinese Language Arena
+            Myme Polyglot Arena
           </h2>
           <p className="text-brand-light-gray text-xs sm:text-xs">
-            Standings are calculated in real-time. Other players around the globe are reviewing their custom and standard HSK decks too—study daily to protect your rank!
+            Review your cards, earn XP points, and achieve new streaks daily to move up the scoreboard!
           </p>
         </div>
 
@@ -236,7 +192,7 @@ export default function Leaderboard({
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-brand-gray font-medium">Mandarin Learner</span>
+                  <span className="text-xs text-brand-gray font-medium">Language Learner</span>
                 </div>
               </div>
 
