@@ -1,0 +1,6 @@
+{
+  "name": "Chinese Spaced Repetition Flashcards",
+  "description": "Learn Chinese vocabulary with HSK decks, custom flashcards, spaced repetition tracking (SRS), leaderboards, streaks, and shareable decks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
