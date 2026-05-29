@@ -1,3 +1,5 @@
+Flashcard app made with google ai studio to learn language
+
 # Run and deploy your AI Studio app
 
 This contains everything you need to run your app locally.
