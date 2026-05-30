@@ -722,7 +722,7 @@ export default function App() {
 
 
       {/* MOBILE LOWER TABS BAR (Hidden on large desktops) */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-brand-border p-2 py-3 flex justify-evenly items-center md:hidden shadow-lg shadow-black/5">
+      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-brand-border p-2 py-3 flex justify-evenly items-center lg:hidden shadow-lg shadow-black/5 h-20">
         {[
           { id: 'decks', label: 'Dashboard', icon: BookOpen },
           { id: 'custom', label: 'My Decks', icon: Layers },
